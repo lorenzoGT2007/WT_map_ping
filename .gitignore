@@ -1,0 +1,6 @@
+__pycache__/
+*.tmp
+# personal: your hotkeys, your screen calibration, the downloaded target data
+settings.json
+calibration.json
+sites_cache.json

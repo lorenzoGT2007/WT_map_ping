@@ -1,0 +1,2 @@
+# the launcher keeps Windows line endings in clones and in GitHub's ZIP download
+*.bat -text
