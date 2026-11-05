@@ -85,7 +85,8 @@ FRAME = (1044, 200, 816)  # the map frame on screen (left, top, size in px): cli
 NOTCH = 1.3  # how much one wheel notch zooms the fake map
 PLANE = (0.8, 0.85)  # the fake plane, for a game that only takes points of interest near it
 state = {'home': FRAME, 'view': FRAME, 'zoom_around': 'cursor', 'reach': None, 'poi': None, 'clicks': [],
-         'marks': [], 'right': [], 'middle': [], 'wheel': 0, 'nudge': 0, 'shift_after': 0}
+         'marks': [], 'right': [], 'middle': [], 'wheel': 0, 'nudge': 0, 'shift_after': 0, 'held': True,
+         'let_go_at_wheel': 0, 'nudge_at_wheel': 0}
 real = w.user32
 
 
@@ -102,7 +103,7 @@ class FakeUser32:
         point[0], point[1] = self.pos
 
     def GetAsyncKeyState(self, vk):
-        return 0x8000 if vk == w.DEFAULTS['map_key'] else 0  # the player holds the map key
+        return 0x8000 if vk == w.DEFAULTS['map_key'] and state['held'] else 0  # the player holds the map key
 
     def GetForegroundWindow(self):
         return 1
@@ -125,6 +126,9 @@ def fake_send(kind, **event):
     left, top, size = state['view']
     if flags == 0x0800:
         state['wheel'] += 1
+        state['held'] &= state['wheel'] != state['let_go_at_wheel']  # the player lets go of the map key here
+        if state['wheel'] == state['nudge_at_wheel']:
+            w.user32.pos = (x + 5, y)  # the player bumps the mouse while the map zooms
         if state['zoom_around'] == 'nowhere':
             return  # a game that ignores the wheel
         f = NOTCH if event['mi'].data > 0 else 1 / NOTCH
@@ -201,6 +205,12 @@ kept = Path(tempfile.mkdtemp()) / 'calibration.json'
 assert 'zoom' in calibrate_with(FRAME, file=kept)
 assert 'zoom' not in calibrate_with(FRAME, reach=0, file=kept)  # a failed try drops it, so the dot turns amber
 assert 'No point of interest appeared' in last_log()
+status = lambda: w.status_text(sites, dict(w.DEFAULTS))[0]
+assert status() == 'warn'
+assert calibrate_with(FRAME, zoom_around='centre', file=kept)['zoom'][0] == 1 and status() == 'warn'  # no precise
+state['let_go_at_wheel'] = w.ZOOM_NOTCHES + w.ZOOM_IN_NOTCHES + 10  # lets go of M as the map zooms back out:
+assert calibrate_with(FRAME, file=kept)['zoom'][0] > 1 and status() == 'ok'  # the finished measurement is kept
+state.update(held=True, let_go_at_wheel=0)
 
 # F8 after spawning elsewhere: the zoomed-out map moved, F8 finds it again and still lands precisely
 assert 'zoom' in calibrate_with(FRAME)
@@ -211,15 +221,30 @@ assert len(state['marks']) == len(sams) and off_px() < 0.75 / zoom, off_px()  # 
 assert state['view'] == spawned and w.math.dist(state['poi'], (0.4, 0.45)) * FRAME[2] < 0.4  # POI put back
 assert close(w.load_calibration()[key], spawned) and 'nearest first.' in logs()
 
+f8_poi = state['poi']
 w.clear_points(dict(w.DEFAULTS), sites)  # Alt+right-clicks the same targets, newest first, then forgets them
 assert len(state['right']) == len(sams) and not any(w.placed.values())
+assert w.math.dist(state['poi'], f8_poi) * FRAME[2] < 0.2  # End puts the point of interest back as precisely
 assert w.clear_points(dict(w.DEFAULTS), sites) is None and 'No aiming points placed by this tool' in last_log()
 
-state.update(clicks=[], marks=[], shift_after=3)  # the map slides while F8 works: the tool says so
+for player_poi in ((0.42, 0.47), None):  # the map slides while F8 works: the tool says so, POI or not
+    state.update(clicks=[], marks=[], shift_after=3, poi=player_poi)
+    w.place_points(dict(w.DEFAULTS), sites)
+    assert 'The map moved while the tool worked' in logs(), player_poi
+    state.update(shift_after=0, home=spawned, view=spawned)
+    w.clear_points(dict(w.DEFAULTS), sites)
+    logs()
+
+state.update(clicks=[], marks=[], wheel=0, poi=(0.42, 0.47),  # the player bumps the mouse while F8 zooms in
+             nudge_at_wheel=w.ZOOM_NOTCHES + 2 * w.ZOOM_IN_NOTCHES + 2)  # on the 2nd target: that one isn't clicked
 w.place_points(dict(w.DEFAULTS), sites)
-assert 'The map moved while the tool worked' in logs()
-state.update(shift_after=0, home=spawned, view=spawned)
+out = logs()
+assert len(state['marks']) == 1 and sum(map(len, w.placed.values())) == 1 and off_px() < 0.75 / zoom, state['marks']
+assert 'the mouse moved' in out and 'Your point of interest was moved' in out, out
+state.update(nudge_at_wheel=0, home=spawned, view=spawned)
+w.user32.pos = (0, 0)
 w.clear_points(dict(w.DEFAULTS), sites)
+logs()
 
 state.update(reach=0, marks=[])  # an aircraft that cannot set a point of interest: last time's map position
 w.place_points(dict(w.DEFAULTS), sites)

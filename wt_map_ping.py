@@ -429,22 +429,29 @@ def find_map(map_vk, pointed=None):
 def click_point(map_vk, view, zoom, notches, point, down, up, alt=True):
     """Click map point (u, v) of `view`. With zoom > 1 it first zooms in around the nearest pixel: the exact
     spot is then `zoom` times further from the cursor, so it can be hit `zoom` times more precisely. Then it
-    zooms back out just as far, which restores `view`. Returns (pixel aimed at, cursor at the release), or
-    None if the map was closed before the click."""
+    zooms back out just as far, which restores `view`. Returns (pixel aimed at, cursor at the release): the
+    two differ if the player touched the mouse, and the pixel is None if that happened before the click.
+    Returns None if the map was closed before the click."""
     left, top, width, height = view
     px, py = left + point[0] * width, top + point[1] * height
     x, y = anchor = round(px), round(py)
     if zoom > 1:
         if not wheel(map_vk, *anchor, notches, SETTLE):
             return None
+        if cursor() != anchor:  # moved while zooming in: the zoom is centred elsewhere, so don't click
+            return None, cursor()
         x, y = round(x + (px - x) * zoom), round(y + (py - y) * zoom)
+    if not map_up(map_vk):  # map closed: even a cursor move would steer the plane
+        return None
     move_to(x, y)
-    if not map_up(map_vk):  # checked right before the press, so it never reaches the flight controls
+    if not map_up(map_vk):
         return None
     if alt:
         key(ALT)
     try:
         time.sleep(STEP)
+        if not map_up(map_vk):  # checked right before the press, so it never reaches the flight controls
+            return None
         at = click(down, up, gap=False)
         time.sleep(STEP)
     finally:
@@ -452,7 +459,8 @@ def click_point(map_vk, view, zoom, notches, point, down, up, alt=True):
             key(ALT, up=True)
     if at == (x, y):  # else the player touched the mouse: send nothing more
         if zoom > 1:
-            wheel(map_vk, *anchor, -notches, SETTLE)
+            if wheel(map_vk, *anchor, -notches, SETTLE) and cursor() != anchor:
+                at = cursor()  # moved while zooming back out: the view may have shifted, so stop after this one
         else:
             time.sleep(GAP)  # the game drops the second click of a double-click
     return (x, y), at
@@ -463,45 +471,59 @@ def on_map(settings, key, points, down, up, precise):
     point (zooming in on it first if `precise` and calibrated) and put the point of interest back. Returns
     the points clicked and, if it stopped early, why. Raises Stop when it could not start."""
     map_vk = settings['map_key']
+    place, clear = key_name(settings['place_key']), key_name(settings['clear_key'])
     calibration = load_calibration()
-    zoom, notches = calibration.get('zoom', (1, 0)) if precise else (1, 0)
+    zoom, notches = calibration.get('zoom', (1, 0))  # the point of interest goes back precisely even for End
     left, top, right, bottom = game_area()
     before = poi()
     clicked, skipped, why = [], 0, ''
-    with map_open(map_vk):
-        if not zoom_out(map_vk, (left + right) // 2, (top + bottom) // 2):
-            raise map_closed(map_vk)
-        found = find_map(map_vk)
-        if found:
-            view = calibration[key] = found[0]  # kept for an aircraft that cannot set a point of interest
-            save_json(CALIB_FILE, calibration)
-        elif key in calibration:
-            view = calibration[key][:4]
-            say('  No point of interest appeared, so the map is taken to be where it was last time. If the points '
-                'are off, use an aircraft that can set a point of interest.')
-        else:
-            raise Stop('No point of interest appeared, so the tool cannot find the map. Use an aircraft whose '
-                       'middle-click on the map sets one (a red square).')
-        on_screen = lambda p: (left + 10 <= view[0] + p[0] * view[2] <= right - 10
-                               and top + 10 <= view[1] + p[1] * view[3] <= bottom - 10)
-        for point in points:
-            if not on_screen(point):
-                skipped += 1  # a click there would land outside the game
-                continue
-            result = click_point(map_vk, view, zoom, notches, point, down, up)
-            if not result:
-                why = ' (stopped: the map closed or War Thunder lost focus)'
-                break
-            clicked.append(point)
-            if result[0] != result[1]:
-                why = " (stopped: the mouse moved; don't touch it while the tool works)"
-                break
-        if found and before and not why and on_screen(before):  # put the point of interest back
-            result = click_point(map_vk, view, zoom, notches, before, 0x20, 0x40, alt=False)
-            back = result and result[0] == result[1] and new_poi(found[1][2:], 2)
-            if back and math.dist(back, before) * view[2] > (0.4 if zoom > 1 else 1):  # zoomed-out px
-                say('  The map moved while the tool worked, so the points can be off. Press End, then F8 again, '
-                    'best while standing still.')
+    try:
+        with map_open(map_vk):
+            if not zoom_out(map_vk, (left + right) // 2, (top + bottom) // 2):
+                raise map_closed(map_vk)
+            found = find_map(map_vk)
+            if found:
+                view = calibration[key] = found[0]  # kept for an aircraft that cannot set a point of interest
+                save_json(CALIB_FILE, calibration)
+            elif key in calibration:
+                view = calibration[key][:4]
+                say('  No point of interest appeared, so the map is taken to be where it was last time. If the '
+                    'points are off, use an aircraft that can set a point of interest.')
+            else:
+                raise Stop('No point of interest appeared, so the tool cannot find the map. Use an aircraft whose '
+                           'middle-click on the map sets one (a red square).')
+            on_screen = lambda p: (left + 10 <= view[0] + p[0] * view[2] <= right - 10
+                                   and top + 10 <= view[1] + p[1] * view[3] <= bottom - 10)
+            for point in points:
+                if not on_screen(point):
+                    skipped += 1  # a click there would land outside the game
+                    continue
+                result = click_point(map_vk, view, zoom if precise else 1, notches, point, down, up)
+                if not result:
+                    why = ' (stopped: the map closed or War Thunder lost focus)'
+                    break
+                aimed, at = result
+                if aimed:
+                    clicked.append(point)
+                if aimed != at:
+                    why = " (stopped: the mouse moved; don't touch it while the tool works)"
+                    break
+            target = found and (before or found[1][2:])  # no point of interest before: the click is only a check
+            if target and not why and on_screen(target):  # put the point of interest back, checking the map
+                result = click_point(map_vk, view, zoom, notches, target, 0x20, 0x40, alt=False)
+                second = found[1][2:]  # new_poi can't see a click that lands where the point already is
+                back = result and result[0] == result[1] and (new_poi(second, 2) if moved(target, second) else poi())
+                if back and math.dist(back, target) * view[2] > (0.4 if zoom > 1 else 1):  # zoomed-out px
+                    say(f'  The map moved while the tool worked, so the points can be off. Press {clear}, then '
+                        f'{place} again, best while standing still.' if precise else
+                        '  The map moved while the tool worked, so a right-click may have missed: remove any '
+                        'aiming point still on the map with Alt+right-click.')
+    finally:
+        try:
+            if before and moved(poi(), before):  # stopped before it was put back
+                say('  Your point of interest was moved: set it again if you use it (CCRP).')
+        except (OSError, ValueError):
+            pass  # the game is gone: whatever stopped the run says why
     if skipped:
         why += f' ({skipped} skipped: off the game window)'
     return clicked, why
@@ -604,8 +626,7 @@ def calibrate(settings, sites):
                        f'before pressing {key}.')
         view, second = found
         zoom = measure_zoom(map_vk, second[:2], second[2:], view[2], view[3])
-        if not zoom_out(map_vk, *second[:2]):
-            raise map_closed(map_vk)
+        zoom_out(map_vk, *second[:2])  # best effort: the measuring is done, and wheel() stops once the map closes
     except Stop as e:
         say(str(e))
         return
@@ -614,7 +635,8 @@ def calibrate(settings, sites):
     calibration[calib_key(name, info)] = view
     save_json(CALIB_FILE, calibration)
     metres_per_px = (info['map_max'][0] - info['map_min'][0]) / view[2]
-    precision = f'F8 zooms in {zoom:.1f}x on each target' if zoom > 1 else 'F8 clicks without zooming in'
+    place = key_name(settings['place_key'])
+    precision = f'{place} zooms in {zoom:.1f}x on each target' if zoom > 1 else f'{place} clicks without zooming in'
     say(f'Calibrated: {precision}, so on {name} points land within about {metres_per_px / zoom / 1.4:.0f} m. '
         f'You can let go of {map_name}. Your point of interest was moved: set it again if you use it (CCRP).')
 
@@ -633,10 +655,14 @@ def status_text(sites, settings):
     name, enemy = detect(info, api('map_obj.json'), sites)
     if not name:
         return 'idle', 'In a battle, but not on a known Nuclear Escalation map (or the sides are not visible yet).'
-    if 'zoom' in load_calibration():
-        return 'ok', f'{name}, enemy is team {enemy}. Ready: press {key_name(settings["place_key"])} in flight.'
-    return 'warn', (f'{name}, enemy is team {enemy}. Not calibrated yet: F8 works, but follow "How to calibrate" '
-                    'on the right once for precise points.')
+    place, zoom = key_name(settings['place_key']), load_calibration().get('zoom')
+    if zoom and zoom[0] > 1:
+        return 'ok', f'{name}, enemy is team {enemy}. Ready: press {place}, best before take-off.'
+    if zoom:  # calibrated, but the zoom could not be measured: plain clicks
+        return 'warn', (f'{name}, enemy is team {enemy}. Calibrated without precise clicks (the log says why): '
+                        f'{place} works with plain clicks. Calibrate again on the runway to retry.')
+    return 'warn', (f'{name}, enemy is team {enemy}. Not calibrated yet: {place} works, but follow "How to '
+                    'calibrate" on the right once for precise points.')
 
 
 def run_status(sites, settings):

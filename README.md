@@ -135,7 +135,7 @@ The game keeps at most 10 aiming points, so clear old ones before step 4.
 
 | Part | What it does |
 |---|---|
-| **Status card** | Shows what the tool sees: whether War Thunder is running, the map, the enemy team, and whether the tool is calibrated. It updates every 2 seconds. The dot is grey while waiting, amber until you calibrate, green when ready, and red when something is wrong. |
+| **Status card** | Shows what the tool sees: whether War Thunder is running, the map, the enemy team, and whether the tool is calibrated. It updates every 2 seconds. The dot is grey while waiting, amber until the tool is calibrated with precise clicks on, green when ready, and red when something is wrong. |
 | **Hotkeys** | Click a button, then press the new key. Esc cancels. **Place aiming points** defaults to F8, **Clear the points it placed** to End and **Calibrate the map** to F10. **Tactical map** must be the same key as your in-game *Tactical map* bind, default M. Pick keys War Thunder doesn't use, because the game sees them too. Alt, the Windows key and Pause can't be hotkeys, and left and right Ctrl or Shift count as different keys. |
 | **Enemy targets** | Tick the target types you want, and choose how many points to place at most (1 to 10). The nearest targets are used first. |
 | **How to calibrate** and **In battle** | A step-by-step guide, written with your current keys. |
@@ -173,7 +173,7 @@ Press **F8**, best before take-off. The tool:
 2. opens the tactical map (holding M yourself works too) and zooms it all the way out with 80 quick wheel notches, enough even from the closest zoom,
 3. **finds the map**: it middle-clicks two spots near the middle of the screen and reads back where the point of interest landed. That shows exactly where the map is right now. The zoomed-out map is not always in the same place (it shifts a little depending on where you spawned), so the tool measures it every time,
 4. for each chosen enemy target, nearest first: zooms in on it, Alt+left-clicks it and zooms back out, about 1.3 seconds per target,
-5. puts your point of interest back where it was, and checks with that click that the map did not move meanwhile,
+5. puts your point of interest back where it was, and checks with that click that the map did not move meanwhile. If you had no point of interest, it clicks the second finding spot again just for the check, and leaves the point of interest there,
 6. closes the map again.
 
 In all it takes about 15 seconds for 8 targets.
@@ -186,7 +186,7 @@ Before you calibrate, or if the calibration could not measure the zoom, F8 click
 
 - **The game keeps at most 10 aiming points.** Clear old ones first: press End for the tool's points, or Alt+right-click a point.
 - **Use an aircraft with aiming points.** On aircraft without them, Alt+clicking the map may send *Attention to the map!* team pings instead.
-- **F8 moves your point of interest** while it finds the map, and puts it back at the end.
+- **F8 moves your point of interest** while it finds the map, and puts it back at the end. If F8 stops early, the log says your point of interest was moved, so you know to set it again.
 - **Targets outside the game window are skipped**, for example in a small game window, and the log says how many.
 - **Targets very close together.** If two chosen targets are only a few pixels apart on the map, the second click can land on the first point's icon. The game may then select that point instead of adding a new one.
 
@@ -263,14 +263,17 @@ The last three are personal and are not part of the repository.
 | `Not flying in a battle right now (spawn in an aircraft first).` | The hotkeys work only while you fly an aircraft in a battle. |
 | `Could not tell the Nuclear Escalation map or the enemy side from the map objects.` | Only Nuclear Escalation maps are supported. If you changed the ally or enemy colour in the game options, set them back to blue and red. Right after spawning, wait a few seconds. |
 | `Not calibrated yet: F8 works, but ...` (status card) | F8 works with plain clicks. [Calibrate](#calibration) once for precise points. |
+| `Calibrated without precise clicks (the log says why) ...` (status card) | The calibration could not measure the zoom, so F8 uses plain clicks. Look for the `precise clicks off: ...` line in the log (see below), then calibrate again on the runway. |
+| `Your point of interest was moved: set it again if you use it (CCRP).` | F8 or End stopped before it could put your point of interest back. Set it again if you bomb with it. |
 | `No point of interest appeared. Use an aircraft ...` (F10) | Use an aircraft whose middle-click on the map sets a point of interest (a red square), and keep the map key held. If it still fails, put the cursor on your plane before pressing F10. |
 | `No point of interest appeared, so the tool cannot find the map.` (F8 or End) | Use an aircraft that can set a point of interest at least once on this map. After that, other aircraft use where the map was last found. |
 | `No point of interest appeared, so the map is taken to be where it was last time.` | Fine if you spawned in the same place. If the points are off, use an aircraft that can set a point of interest. |
 | `Stopped: keep M held (War Thunder in front) until the tool finishes.` | Keep the map key held until the tool is done, and don't switch windows. |
 | `Stopped: the mouse moved.` | Let go of the mouse after pressing the hotkey and don't touch it until the tool is done. |
 | `The map readings make no sense ...` | Try again, ideally on the runway, with the map zoomed all the way out and the mouse still. |
-| `precise clicks off: ...` in the calibration's log lines | The calibration was still saved, but F8 will click without zooming in. Try calibrating again on the runway. If it keeps saying the map did not zoom evenly around the cursor, your game zooms differently and plain clicks are the best the tool can do. |
-| `The map moved while the tool worked, so the points can be off.` | Press End, then F8 again, best while standing still on the runway: in flight the map can follow your plane. |
+| `precise clicks off: ...` in the calibration's log lines | The calibration was saved, but F8 will click without zooming in, and the dot stays amber. Try calibrating again on the runway; if the map was still zooming, raise `SETTLE` first. If it keeps saying the map did not zoom evenly around the cursor, your game zooms differently and plain clicks are the best the tool can do. |
+| `The map moved while the tool worked, so the points can be off.` (after F8) | Press End, then F8 again, best while standing still on the runway: in flight the map can follow your plane. |
+| `The map moved while the tool worked, so a right-click may have missed ...` (after End) | Hold M and remove any aiming point still on the map with Alt+right-click. |
 | `... (N skipped: off the game window)` | Those targets would be outside the game window, for example in a small windowed game. Make the window bigger or fullscreen. |
 | F8 leaves the map zoomed in | Raise `ZOOM_NOTCHES` at the top of `wt_map_ping.py`, for example to `150`, or scroll the map out yourself before pressing F8. |
 | F8's points still miss by more than the log's "points land within about ... m" | Raise `SETTLE` at the top of `wt_map_ping.py`, for example to `1.0`: the map may still be zooming when the tool clicks. |
