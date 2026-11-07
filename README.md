@@ -66,6 +66,7 @@ Supported maps: **Tropical Coast**, **Southeastern City** and **Volcano Valley**
 - **Python 3.8 or newer**, free from [python.org](https://www.python.org/downloads/). [Installation](#installation) shows how, step by step. Nothing else needs installing.
 - **An aircraft with aiming points**, to place them. On the tactical map these aircraft show the *Alt + left click: add aiming point* hint.
 - **An aircraft that can set a point of interest** by middle-clicking the map: a red square appears where you click. Most jets with a targeting pod can. Calibration needs it, and F8 and End use it to find the map. In an aircraft without one, they assume the map is where they last found it.
+- **War Thunder sharing its map objects** on its local map page, which the tool reads. Since late 2026 the game often serves that page empty. Players report it fills again while the **War Thunder Assistant** phone app is connected to the game ([forum thread](https://forum.warthunder.com/t/the-response-for-127-0-0-1-8111-map-obj-json-in-the-webui-is-empty/355087)). The tool tells you when this happens.
 - **War Thunder's *Hold the tactical map button* option left on** (the default). With it off, the map key toggles the map, and the tool's own key press can close the map instead of opening it.
 
 ## Installation
@@ -261,6 +262,7 @@ The last three are personal and are not part of the repository.
 |---|---|
 | `Waiting for War Thunder (its map API at 127.0.0.1:8111 is not answering).` | Start the game. During a battle, http://127.0.0.1:8111 should open War Thunder's own map in a browser. |
 | `Not flying in a battle right now (spawn in an aircraft first).` | The hotkeys work only while you fly an aircraft in a battle. |
+| `War Thunder is not sharing its map objects right now ...` (and a red status card saying so) | The game serves its map objects page (`http://127.0.0.1:8111/map_obj.json`) empty, so the tool can't see the sides or read back its clicks, and it clicks nothing. Players report the page fills again while the **War Thunder Assistant** phone app is connected to the game ([forum thread](https://forum.warthunder.com/t/the-response-for-127-0-0-1-8111-map-obj-json-in-the-webui-is-empty/355087)). Start the app, connect it to your game, then press the key again. |
 | `Could not tell the Nuclear Escalation map or the enemy side from the map objects.` | Only Nuclear Escalation maps are supported. If you changed the ally or enemy colour in the game options, set them back to blue and red. Right after spawning, wait a few seconds. |
 | `Not calibrated yet: F8 works, but ...` (status card) | F8 works with plain clicks. [Calibrate](#calibration) once for precise points. |
 | `Calibrated without precise clicks (the log says why) ...` (status card) | The calibration could not measure the zoom, so F8 uses plain clicks. Look for the `precise clicks off: ...` line in the log (see below), then calibrate again on the runway. |

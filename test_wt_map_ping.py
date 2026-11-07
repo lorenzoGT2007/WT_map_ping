@@ -1,5 +1,6 @@
 """Self-check, sends no input to anything:  py test_wt_map_ping.py
 Uses test_snapshot.json, a real capture of the game's map API in a Tropical Coast battle."""
+import io
 import json
 import tempfile
 import time
@@ -70,6 +71,16 @@ for text, expected in [('{broken', w.DEFAULTS), ('{"map_key": "x"}', w.DEFAULTS)
     w.SETTINGS_FILE.write_text(text)
     assert w.load_settings() == expected, text
 assert w.key_name(0x77) == 'F8' and w.key_name(0x4D) == 'M'
+
+# the game's map pages: empty or cut short (it serves map_obj.json empty, often) reads as {} instead of crashing
+real_urlopen = w.urllib.request.urlopen
+for body, expected in ((b'', {}), (b'[{"type": "airf', {}), (b'[{"type": "airfield"}]', [{'type': 'airfield'}])):
+    w.urllib.request.urlopen = lambda url, timeout: io.BytesIO(body)
+    assert w.api('map_obj.json') == expected, body
+w.urllib.request.urlopen = real_urlopen
+w.CALIB_FILE = Path(tempfile.mkdtemp()) / 'calibration.json'
+w.CALIB_FILE.write_text('')  # a broken calibration.json reads as not calibrated
+assert w.load_calibration() == {}
 assert (w.scancode(0x77), w.scancode(0xA4), w.scancode(0x25), w.scancode(0xA3)) == (0x42, 0x38, 0xE04B, 0xE01D)
 
 # the window builds (hidden, so nothing pops up)
@@ -269,6 +280,16 @@ assert len(state['clicks']) == 3 and left_over() == 3 and 'the mouse moved' in l
 state.update(nudge=1)  # ...and during End's 1st click
 w.clear_points(dict(w.DEFAULTS), sites)
 assert len(state['right']) == 1 and left_over() == 2 and 'the mouse moved' in last_log()
+
+pages = {'map_info.json': info, 'state': {'valid': True}, 'map_obj.json': {}}  # flying, but no map objects shared
+w.api, saved_api = pages.get, w.api
+state.update(clicks=[], middle=[], wheel=0)
+for action in (w.place_points, w.calibrate, w.clear_points):
+    action(dict(w.DEFAULTS), sites)
+    assert w.NO_OBJECTS in logs() or action is w.clear_points, action  # says why, instead of crashing
+assert state['clicks'] == state['middle'] == [] and state['wheel'] == 0  # and sends nothing
+assert w.status_text(sites, dict(w.DEFAULTS))[0] == 'bad'
+w.api = saved_api
 
 SCREEN[:] = 1280, 720  # the game window shrank: the map's spot is off the window, nothing may be clicked there
 state.update(clicks=[], nudge=0)

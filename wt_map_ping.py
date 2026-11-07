@@ -196,8 +196,20 @@ def game_area():
 # ---------------------------------------------------------------- game API, target data, geometry
 
 def api(path):
+    """A page of War Thunder's local map server, parsed. A page the game serves empty or cut short comes back
+    as {}: the game often serves map_obj.json empty (see NO_OBJECTS)."""
     with urllib.request.urlopen(API + path, timeout=2) as response:
-        return json.load(response)
+        body = response.read()
+    try:
+        return json.loads(body)
+    except ValueError:
+        return {}
+
+
+NO_OBJECTS = ("War Thunder is not sharing its map objects right now: its map page (127.0.0.1:8111/map_obj.json) is "
+              "empty, so the tool can't tell the sides apart or read back its clicks. Players report the game only "
+              "fills it while the War Thunder Assistant phone app is connected to the game: start the app, connect "
+              "it, then try again.")
 
 
 def save_json(path, data):
@@ -313,7 +325,10 @@ def calib_key(name, info):
 
 
 def load_calibration():
-    return json.loads(CALIB_FILE.read_text()) if CALIB_FILE.exists() else {}
+    try:
+        return json.loads(CALIB_FILE.read_text()) if CALIB_FILE.exists() else {}
+    except ValueError:
+        return {}  # broken by hand: reads as not calibrated, and the next calibration rewrites it
 
 
 def load_settings():
@@ -342,6 +357,9 @@ def read_battle(sites):
     if not (info.get('valid') and info.get('hud_type') == 0 and api('state').get('valid')):
         say('Not flying in a battle right now (spawn in an aircraft first).')
         return None
+    if not objs:
+        say(NO_OBJECTS)
+        return None
     name, enemy = detect(info, objs, sites)
     if not name:
         say('Could not tell the Nuclear Escalation map or the enemy side from the map objects.')
@@ -350,7 +368,7 @@ def read_battle(sites):
 
 
 def poi():
-    return next(((o['x'], o['y']) for o in api('map_obj.json') if o['type'] == 'point_of_interest'), None)
+    return next(((o['x'], o['y']) for o in api('map_obj.json') or [] if o['type'] == 'point_of_interest'), None)
 
 
 def moved(point, before):
@@ -652,7 +670,11 @@ def status_text(sites, settings):
     if not info.get('valid'):
         placed.clear()  # out of the battle, so its aiming points are gone
         return 'idle', 'War Thunder is running. Join a Nuclear Escalation battle in an aircraft.'
-    name, enemy = detect(info, api('map_obj.json'), sites)
+    objs = api('map_obj.json')
+    if not objs:
+        return 'bad', ('In a battle, but War Thunder is not sharing its map objects (its map page is empty), so the '
+                       'tool can\'t work. Players report connecting the War Thunder Assistant phone app fixes it.')
+    name, enemy = detect(info, objs, sites)
     if not name:
         return 'idle', 'In a battle, but not on a known Nuclear Escalation map (or the sides are not visible yet).'
     place, zoom = key_name(settings['place_key']), load_calibration().get('zoom')
